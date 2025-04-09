@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -31,7 +32,7 @@ type MyFact struct {
 	WhatToSay        string
 }
 
-type CountryMusicRecommendations struct {
+type CountryMusicDocument struct {
 	RuleID     string
 	Artist     string
 	Title      string
@@ -79,6 +80,10 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	}
 
 	recommendations := extractRecommendations(resp.Items)
+
+	//Generate Grule rules based on what is present int he recommendations array
+	documentRules := extractGrules(recommendations)
+	fmt.Println(documentRules) // Print the combined rule set
 
 	//Get GRULE working
 	myFact := &MyFact{
@@ -129,6 +134,31 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	return responseData, nil // Convert []byte to string
 }
 
+func extractGrules(documents []CountryMusicDocument) string {
+	var rules []string
+
+	for _, document := range documents {
+		ruleFormat := `rule Check%s "%s" salience 10 {
+            when
+               UserSelections.IsSongThemeMatch(%s)
+            then
+                UserSelections.Append("%s");
+                Retract("Check%s");
+        }`
+		themes := []string{}
+		for theme, desc := range document.Themes {
+			if desc != "" {
+				themes = append(themes, fmt.Sprintf("\"%s\"", theme))
+			}
+		}
+
+		rules = append(rules, fmt.Sprintf(ruleFormat, document.RuleID, document.Title, strings.Join(themes, ", "), document.RuleID, document.RuleID))
+	}
+
+	songRule := strings.Join(rules, "\n\n") // Combine all rules into one string
+	return songRule
+}
+
 func (my *MyFact) GetWhatToSay(sentance string) string {
 	return fmt.Sprintf("Lets say \"%s\"", sentance)
 }
@@ -164,11 +194,11 @@ func printItem(item map[string]types.AttributeValue, indent string) {
 	}
 }
 
-func extractRecommendations(items []map[string]types.AttributeValue) []CountryMusicRecommendations {
-	var recommendations []CountryMusicRecommendations
+func extractRecommendations(items []map[string]types.AttributeValue) []CountryMusicDocument {
+	var recommendations []CountryMusicDocument
 
 	for _, item := range items {
-		recommendation := CountryMusicRecommendations{
+		recommendation := CountryMusicDocument{
 			RuleID:     getStringValue(item["RuleID"]),
 			Artist:     getStringValue(item["artist"]),
 			Title:      getStringValue(item["title"]),
