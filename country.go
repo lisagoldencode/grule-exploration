@@ -41,11 +41,28 @@ type CountryMusicDocument struct {
 	Themes     map[string]string
 }
 
+type UserSelections struct {
+	Adventure          bool
+	America            bool
+	CarsTrucksTractors bool
+	Goodtimes          bool
+	Grit               bool
+	Home               bool
+	Love               bool
+	HeartBreak         bool
+	Lessons            bool
+	Rebellion          bool
+	Recommendations    map[string]int
+}
+
+type IncomingRequest struct {
+	Themes map[string]bool `json:"themes"`
+}
+
 func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage, error) {
 
-	//Print hello
-	log.Printf("Welcome! Request Body from Test Event")
-	log.Printf("%s", event)
+	userSelections := getUserSelections(event)
+	fmt.Printf("Parsed UserSelections: %+v\n", userSelections)
 
 	//Call DynamoDB
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
@@ -134,6 +151,29 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	//return "Success", nil
 	responseData, err := json.Marshal(recommendations)
 	return responseData, nil // Convert []byte to string
+}
+
+func getUserSelections(event json.RawMessage) UserSelections {
+	var incoming IncomingRequest
+	if err := json.Unmarshal([]byte(event), &incoming); err != nil {
+		fmt.Println("Error unmarshalling JSON:", err)
+	}
+
+	// Map the JSON fields to UserSelections struct
+	userSelections := UserSelections{
+		Adventure:          incoming.Themes["adventure"],
+		America:            incoming.Themes["america"],
+		CarsTrucksTractors: incoming.Themes["carsTrucksTractors"],
+		Goodtimes:          incoming.Themes["goodtimes"],
+		Grit:               incoming.Themes["grit"],
+		Home:               incoming.Themes["home"],
+		Love:               incoming.Themes["love"],
+		HeartBreak:         incoming.Themes["heartbreak"],
+		Lessons:            incoming.Themes["lessons"],
+		Rebellion:          incoming.Themes["rebellion"],
+		Recommendations:    make(map[string]int), // Initialize Recommendations
+	}
+	return userSelections
 }
 
 func extractGrules(documents []CountryMusicDocument) string {
