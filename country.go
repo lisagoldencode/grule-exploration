@@ -145,18 +145,10 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 		log.Fatalf("Failed to scan items: %v", err)
 	}
 
-	fmt.Println("Items in Table:")
-
-	for _, item := range resp.Items {
-		printItem(item, "")
-		fmt.Println("--------")
-	}
-
 	recommendations := extractRecommendations(resp.Items)
 
 	//Generate Grule rules based on what is present int he recommendations array
 	documentRules := extractGrules(recommendations)
-	fmt.Println(documentRules) // Print the combined rule set
 
 	//Get GRULE working
 	dataCtx := ast.NewDataContext()
@@ -183,6 +175,8 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
             Retract("Check10001");
     }
     `
+	fmt.Println("Document Rules: %s", documentRules) // Print the combined rule set
+	fmt.Println("Hardcoded Rules: %s", drls)
 
 	bs := pkg.NewBytesResource([]byte(drls))
 	err = ruleBuilder.BuildRuleFromResource("SongRecs", "0.0.1", bs)
@@ -236,19 +230,22 @@ func extractGrules(documents []CountryMusicDocument) string {
 	for _, document := range documents {
 		ruleFormat := `rule Check%s "%s" salience 10 {
             when
-               UserSelections.IsSongThemeMatch(%s)
+               UserSelections.IsSongThemeMatch(%s, %s)
             then
-                UserSelections.Append("%s");
-                Retract("Check%s");
+               UserSelections.SetRecommendations(%s, %s);
+               Retract("Check%s");
         }`
 		themes := []string{}
 		for theme, desc := range document.Themes {
 			if desc != "" {
-				themes = append(themes, fmt.Sprintf("\"%s\"", theme))
+				themes = append(themes, fmt.Sprintf("\"%s\"", capitalizeFirstLetter(theme)))
 			}
 		}
 
-		rules = append(rules, fmt.Sprintf(ruleFormat, document.RuleID, document.Title, strings.Join(themes, ", "), document.RuleID, document.RuleID))
+		rules = append(rules, fmt.Sprintf(ruleFormat, document.RuleID, document.Title, // Rule function
+			fmt.Sprintf("\"%s\"", document.RuleID), strings.Join(themes, ", "), // When
+			fmt.Sprintf("\"%s\"", document.RuleID), strings.Join(themes, ", "), // Then
+			fmt.Sprintf("\"%s\"", document.RuleID))) // Retract
 	}
 
 	songRule := strings.Join(rules, "\n\n") // Combine all rules into one string
@@ -322,4 +319,11 @@ func extractThemes(attr types.AttributeValue) map[string]string {
 		}
 	}
 	return themes
+}
+
+func capitalizeFirstLetter(s string) string {
+	if len(s) == 0 {
+		return s // Return empty string if input is empty
+	}
+	return strings.ToUpper(s[:1]) + s[1:] // Capitalize first letter and append the rest
 }
