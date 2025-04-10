@@ -150,6 +150,31 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	//Generate Grule rules based on what is present int he recommendations array
 	documentRules := extractGrules(recommendations)
 
+	//Rule Definition
+	drls := `
+    rule Check10000 "Take Me Home, Country Roads" salience 10 {
+        when
+          UserSelections.IsSongThemeMatch("10000", "Lessons", "Adventure", "Home", "America")
+        then
+        	UserSelections.SetRecommendations("10000", "Lessons", "Adventure", "Home", "America");
+            Retract("Check10000");
+    }
+
+	rule Check10001 "All My Ex's Live In Texas" salience 10 {
+        when
+           UserSelections.IsSongThemeMatch("10001", "Rebellion", "HeartBreak", "America")
+        then
+            UserSelections.SetRecommendations("10001", "Rebellion", "HeartBreak", "America");
+            Retract("Check10001");
+    }
+    `
+
+	fmt.Println("DynamoDb Rules: ")
+	fmt.Println(documentRules) // Print the combined rule set
+
+	fmt.Println("Hardcoded Rules: ")
+	fmt.Println(drls)
+
 	//Get GRULE working
 	dataCtx := ast.NewDataContext()
 	dataCtx.Add("UserSelections", userSelections)
@@ -157,28 +182,7 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	knowledgeLibrary := ast.NewKnowledgeLibrary()
 	ruleBuilder := builder.NewRuleBuilder(knowledgeLibrary)
 
-	//Rule Definition
-	drls := `
-    rule Check10000 "Take Me Home, Country Roads" salience 10 {
-        when
-           UserSelections.IsSongThemeMatch("10000", "Adventure", "America", "Home", "Lessons")
-        then
-            UserSelections.SetRecommendations("10000", "Adventure", "America", "Home", "Lessons");
-            Retract("Check10000");
-    }
-
-	rule Check10001 "All My Ex's Live In Texas" salience 10 {
-        when
-           UserSelections.IsSongThemeMatch("10001", "Adventure", "HeartBreak", "Rebellion")
-        then
-            UserSelections.SetRecommendations("10001", "Adventure", "HeartBreak", "Rebellion");
-            Retract("Check10001");
-    }
-    `
-	fmt.Println("Document Rules: %s", documentRules) // Print the combined rule set
-	fmt.Println("Hardcoded Rules: %s", drls)
-
-	bs := pkg.NewBytesResource([]byte(drls))
+	bs := pkg.NewBytesResource([]byte(documentRules))
 	err = ruleBuilder.BuildRuleFromResource("SongRecs", "0.0.1", bs)
 	if err != nil {
 		panic(err)
@@ -245,7 +249,7 @@ func extractGrules(documents []CountryMusicDocument) string {
 		rules = append(rules, fmt.Sprintf(ruleFormat, document.RuleID, document.Title, // Rule function
 			fmt.Sprintf("\"%s\"", document.RuleID), strings.Join(themes, ", "), // When
 			fmt.Sprintf("\"%s\"", document.RuleID), strings.Join(themes, ", "), // Then
-			fmt.Sprintf("\"%s\"", document.RuleID))) // Retract
+			document.RuleID)) // Retract
 	}
 
 	songRule := strings.Join(rules, "\n\n") // Combine all rules into one string
