@@ -115,20 +115,8 @@ func (p *UserSelections) SetRecommendations(songId string, songThemes ...string)
 
 func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage, error) {
 
-	//userSelections := getUserSelections(event)
-	userSelections := &UserSelections{
-		Adventure:          true,
-		America:            true,
-		CarsTrucksTractors: false,
-		Goodtimes:          false,
-		Grit:               false,
-		Home:               false,
-		Love:               false,
-		HeartBreak:         false,
-		Lessons:            true,
-		Rebellion:          false,
-		Recommendations:    make(map[string]int),
-	}
+	userSelections := getUserSelections(event)
+
 	fmt.Printf("Parsed UserSelections: %+v\n", userSelections)
 
 	//Call DynamoDB
@@ -219,7 +207,7 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	return responseData, nil // Convert []byte to string
 }
 
-func getUserSelections(event json.RawMessage) UserSelections {
+func getUserSelections(event json.RawMessage) *UserSelections {
 	var incoming IncomingRequest
 	if err := json.Unmarshal([]byte(event), &incoming); err != nil {
 		fmt.Println("Error unmarshalling JSON:", err)
@@ -239,7 +227,7 @@ func getUserSelections(event json.RawMessage) UserSelections {
 		Rebellion:          incoming.Themes["rebellion"],
 		Recommendations:    make(map[string]int), // Initialize Recommendations
 	}
-	return userSelections
+	return &userSelections
 }
 
 func extractGrules(documents []CountryMusicDocument) string {
