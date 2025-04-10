@@ -44,7 +44,8 @@ type CountryMusicDocument struct {
 func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage, error) {
 
 	//Print hello
-	log.Printf("Welcome to Lisa Golden's Tutorial App")
+	log.Printf("Welcome! Request Body from Test Event")
+	log.Printf("%s", event)
 
 	//Call DynamoDB
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
@@ -113,6 +114,7 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
             Retract("CheckValues");
     }
     `
+
 	bs := pkg.NewBytesResource([]byte(drls))
 	err = ruleBuilder.BuildRuleFromResource("TutorialRules", "0.0.1", bs)
 	if err != nil {
