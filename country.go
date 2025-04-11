@@ -183,6 +183,13 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 func filterDocumentsByRecommendations(documents []CountryMusicDocument, userSelections *UserSelections) []CountryMusicDocument {
 	fmt.Println("Starting filterDocumentsByRecommendations...")
 
+	// Print the user preferences
+	fmt.Println("Method input: User Preferences:")
+	fmt.Printf("Adventure: %t, America: %t, CarsTrucksTractors: %t, Goodtimes: %t, Grit: %t, Home: %t, Love: %t, HeartBreak: %t, Lessons: %t, Rebellion: %t\n",
+		userSelections.Adventure, userSelections.America, userSelections.CarsTrucksTractors, userSelections.Goodtimes, userSelections.Grit,
+		userSelections.Home, userSelections.Love, userSelections.HeartBreak, userSelections.Lessons, userSelections.Rebellion)
+	fmt.Printf("Method input: Recommendations: %v\n", userSelections.Recommendations)
+
 	// Get top N recommendations
 	fmt.Println("Retrieving top recommended RuleIDs...")
 	topRuleIDs := getTopNRecommendations(userSelections.Recommendations, 3)
@@ -205,30 +212,6 @@ func filterDocumentsByRecommendations(documents []CountryMusicDocument, userSele
 
 	fmt.Println("Completed filterDocumentsByRecommendations.")
 	return themeUpdatedFilteredDocs
-}
-
-// Function to update themes based on UserSelections
-func updateThemes(filteredDocs []CountryMusicDocument, userSelections UserSelections) {
-	themeKeys := map[string]bool{
-		"Adventure":          userSelections.Adventure,
-		"America":            userSelections.America,
-		"CarsTrucksTractors": userSelections.CarsTrucksTractors,
-		"Goodtimes":          userSelections.Goodtimes,
-		"Grit":               userSelections.Grit,
-		"Home":               userSelections.Home,
-		"Love":               userSelections.Love,
-		"HeartBreak":         userSelections.HeartBreak,
-		"Lessons":            userSelections.Lessons,
-		"Rebellion":          userSelections.Rebellion,
-	}
-
-	for i := range filteredDocs {
-		for theme := range filteredDocs[i].Themes {
-			if !themeKeys[theme] {
-				filteredDocs[i].Themes[theme] = ""
-			}
-		}
-	}
 }
 
 func getUserSelections(event json.RawMessage) *UserSelections {
@@ -377,25 +360,31 @@ func filterDocuments(documents []CountryMusicDocument, topRuleIDs []string) []Co
 
 // Function to create a new list with updated themes based on UserSelections
 func generateThemeUpdatedDocs(filteredDocs []CountryMusicDocument, userSelections UserSelections) []CountryMusicDocument {
+	// Normalize theme keys to lowercase for consistent lookup
 	themeKeys := map[string]bool{
-		"Adventure":          userSelections.Adventure,
-		"America":            userSelections.America,
-		"CarsTrucksTractors": userSelections.CarsTrucksTractors,
-		"Goodtimes":          userSelections.Goodtimes,
-		"Grit":               userSelections.Grit,
-		"Home":               userSelections.Home,
-		"Love":               userSelections.Love,
-		"HeartBreak":         userSelections.HeartBreak,
-		"Lessons":            userSelections.Lessons,
-		"Rebellion":          userSelections.Rebellion,
+		strings.ToLower("Adventure"):          userSelections.Adventure,
+		strings.ToLower("America"):            userSelections.America,
+		strings.ToLower("CarsTrucksTractors"): userSelections.CarsTrucksTractors,
+		strings.ToLower("Goodtimes"):          userSelections.Goodtimes,
+		strings.ToLower("Grit"):               userSelections.Grit,
+		strings.ToLower("Home"):               userSelections.Home,
+		strings.ToLower("Love"):               userSelections.Love,
+		strings.ToLower("HeartBreak"):         userSelections.HeartBreak,
+		strings.ToLower("Lessons"):            userSelections.Lessons,
+		strings.ToLower("Rebellion"):          userSelections.Rebellion,
 	}
+
+	// Print the normalized themeKeys map to verify values
+	fmt.Printf("themeKeys (normalized to lowercase): %v\n", themeKeys)
 
 	var themeUpdatedFilteredDocs []CountryMusicDocument
 
 	for _, doc := range filteredDocs {
 		updatedThemes := make(map[string]string)
 		for theme, value := range doc.Themes {
-			if themeKeys[theme] {
+			normalizedTheme := strings.ToLower(theme) // Convert the document's theme to lowercase
+
+			if themeKeys[normalizedTheme] {
 				updatedThemes[theme] = value
 			} else {
 				updatedThemes[theme] = ""
