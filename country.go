@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -144,36 +145,13 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 	if err != nil {
 		log.Fatalf("Failed to scan items: %v", err)
 	}
-
-	recommendations := extractRecommendations(resp.Items)
-
 	//Generate Grule rules based on what is present int he recommendations array
-	documentRules := extractGrules(recommendations)
 
-	//Rule Definition
-	drls := `
-    rule Check10000 "Take Me Home, Country Roads" salience 10 {
-        when
-          UserSelections.IsSongThemeMatch("10000", "Lessons", "Adventure", "Home", "America")
-        then
-        	UserSelections.SetRecommendations("10000", "Lessons", "Adventure", "Home", "America");
-            Retract("Check10000");
-    }
-
-	rule Check10001 "All My Ex's Live In Texas" salience 10 {
-        when
-           UserSelections.IsSongThemeMatch("10001", "Rebellion", "HeartBreak", "America")
-        then
-            UserSelections.SetRecommendations("10001", "Rebellion", "HeartBreak", "America");
-            Retract("Check10001");
-    }
-    `
+	documents := extractJSONFromDocuments(resp.Items)
+	documentRules := extractGrules(documents)
 
 	fmt.Println("DynamoDb Rules: ")
 	fmt.Println(documentRules) // Print the combined rule set
-
-	fmt.Println("Hardcoded Rules: ")
-	fmt.Println(drls)
 
 	//Get GRULE working
 	dataCtx := ast.NewDataContext()
@@ -196,13 +174,61 @@ func handleRequest(ctx context.Context, event json.RawMessage) (json.RawMessage,
 		panic(err)
 	}
 
-	fmt.Println("\n==========")
-	fmt.Println("Song recommendations for user: ")
-	fmt.Println(userSelections.Recommendations)
-
 	//return "Success", nil
-	responseData, err := json.Marshal(recommendations)
+	userRecs := filterDocumentsByRecommendations(documents, userSelections)
+	responseData, err := json.Marshal(userRecs)
 	return responseData, nil // Convert []byte to string
+}
+
+func filterDocumentsByRecommendations(documents []CountryMusicDocument, userSelections *UserSelections) []CountryMusicDocument {
+	fmt.Println("Starting filterDocumentsByRecommendations...")
+
+	// Get top N recommendations
+	fmt.Println("Retrieving top recommended RuleIDs...")
+	topRuleIDs := getTopNRecommendations(userSelections.Recommendations, 3)
+	fmt.Printf("Top RuleIDs: %v\n", topRuleIDs)
+
+	// Filter documents based on RuleID
+	fmt.Println("Filtering documents based on top RuleIDs...")
+	filteredDocs := filterDocuments(documents, topRuleIDs)
+	fmt.Printf("Filtered Documents Count: %d\n", len(filteredDocs))
+
+	// Generate new list with updated themes based on UserSelections
+	fmt.Println("Updating themes in filtered documents based on user selections...")
+	themeUpdatedFilteredDocs := generateThemeUpdatedDocs(filteredDocs, *userSelections)
+	fmt.Printf("Theme-Updated Documents Count: %d\n", len(themeUpdatedFilteredDocs))
+
+	fmt.Println("Final filtered and updated documents:")
+	for _, doc := range themeUpdatedFilteredDocs {
+		fmt.Printf("RuleID: %s, Artist: %s, Title: %s, Themes: %v\n", doc.RuleID, doc.Artist, doc.Title, doc.Themes)
+	}
+
+	fmt.Println("Completed filterDocumentsByRecommendations.")
+	return themeUpdatedFilteredDocs
+}
+
+// Function to update themes based on UserSelections
+func updateThemes(filteredDocs []CountryMusicDocument, userSelections UserSelections) {
+	themeKeys := map[string]bool{
+		"Adventure":          userSelections.Adventure,
+		"America":            userSelections.America,
+		"CarsTrucksTractors": userSelections.CarsTrucksTractors,
+		"Goodtimes":          userSelections.Goodtimes,
+		"Grit":               userSelections.Grit,
+		"Home":               userSelections.Home,
+		"Love":               userSelections.Love,
+		"HeartBreak":         userSelections.HeartBreak,
+		"Lessons":            userSelections.Lessons,
+		"Rebellion":          userSelections.Rebellion,
+	}
+
+	for i := range filteredDocs {
+		for theme := range filteredDocs[i].Themes {
+			if !themeKeys[theme] {
+				filteredDocs[i].Themes[theme] = ""
+			}
+		}
+	}
 }
 
 func getUserSelections(event json.RawMessage) *UserSelections {
@@ -256,38 +282,7 @@ func extractGrules(documents []CountryMusicDocument) string {
 	return songRule
 }
 
-// Function to recursively print item values
-func printItem(item map[string]types.AttributeValue, indent string) {
-	for key, value := range item {
-		switch v := value.(type) {
-		case *types.AttributeValueMemberS:
-			// String value
-			fmt.Printf("%s%s: %s\n", indent, key, v.Value)
-		case *types.AttributeValueMemberN:
-			// Number value
-			fmt.Printf("%s%s: %s\n", indent, key, v.Value)
-		case *types.AttributeValueMemberM:
-			// Map value, recursively print nested values
-			fmt.Printf("%s%s:\n", indent, key)
-			printItem(v.Value, indent+"  ") // Indentation for nested keys
-		case *types.AttributeValueMemberL:
-			// List value, iterate through list items
-			fmt.Printf("%s%s: [\n", indent, key)
-			for _, listItem := range v.Value {
-				if mapItem, ok := listItem.(*types.AttributeValueMemberM); ok {
-					printItem(mapItem.Value, indent+"  ")
-				} else {
-					fmt.Printf("%s  %v\n", indent, listItem)
-				}
-			}
-			fmt.Printf("%s]\n", indent)
-		default:
-			fmt.Printf("%s%s: [unsupported type]\n", indent, key)
-		}
-	}
-}
-
-func extractRecommendations(items []map[string]types.AttributeValue) []CountryMusicDocument {
+func extractJSONFromDocuments(items []map[string]types.AttributeValue) []CountryMusicDocument {
 	var recommendations []CountryMusicDocument
 
 	for _, item := range items {
@@ -330,4 +325,91 @@ func capitalizeFirstLetter(s string) string {
 		return s // Return empty string if input is empty
 	}
 	return strings.ToUpper(s[:1]) + s[1:] // Capitalize first letter and append the rest
+}
+
+// Function to get the top N recommendations
+func getTopNRecommendations(recommendations map[string]int, N int) []string {
+	var sortedList []struct {
+		Key   string
+		Value int
+	}
+
+	for k, v := range recommendations {
+		sortedList = append(sortedList, struct {
+			Key   string
+			Value int
+		}{k, v})
+	}
+
+	sort.Slice(sortedList, func(i, j int) bool {
+		return sortedList[i].Value > sortedList[j].Value
+	})
+
+	if len(sortedList) < N {
+		N = len(sortedList)
+	}
+
+	var topRuleIDs []string
+	for _, item := range sortedList[:N] {
+		topRuleIDs = append(topRuleIDs, item.Key)
+	}
+
+	return topRuleIDs
+}
+
+// Function to filter documents based on matching RuleID
+func filterDocuments(documents []CountryMusicDocument, topRuleIDs []string) []CountryMusicDocument {
+	var filteredDocuments []CountryMusicDocument
+	ruleIDMap := make(map[string]bool)
+
+	for _, id := range topRuleIDs {
+		ruleIDMap[id] = true
+	}
+
+	for _, doc := range documents {
+		if ruleIDMap[doc.RuleID] {
+			filteredDocuments = append(filteredDocuments, doc)
+		}
+	}
+
+	return filteredDocuments
+}
+
+// Function to create a new list with updated themes based on UserSelections
+func generateThemeUpdatedDocs(filteredDocs []CountryMusicDocument, userSelections UserSelections) []CountryMusicDocument {
+	themeKeys := map[string]bool{
+		"Adventure":          userSelections.Adventure,
+		"America":            userSelections.America,
+		"CarsTrucksTractors": userSelections.CarsTrucksTractors,
+		"Goodtimes":          userSelections.Goodtimes,
+		"Grit":               userSelections.Grit,
+		"Home":               userSelections.Home,
+		"Love":               userSelections.Love,
+		"HeartBreak":         userSelections.HeartBreak,
+		"Lessons":            userSelections.Lessons,
+		"Rebellion":          userSelections.Rebellion,
+	}
+
+	var themeUpdatedFilteredDocs []CountryMusicDocument
+
+	for _, doc := range filteredDocs {
+		updatedThemes := make(map[string]string)
+		for theme, value := range doc.Themes {
+			if themeKeys[theme] {
+				updatedThemes[theme] = value
+			} else {
+				updatedThemes[theme] = ""
+			}
+		}
+		themeUpdatedFilteredDocs = append(themeUpdatedFilteredDocs, CountryMusicDocument{
+			RuleID:     doc.RuleID,
+			Artist:     doc.Artist,
+			Title:      doc.Title,
+			LyricQuote: doc.LyricQuote,
+			VideoLink:  doc.VideoLink,
+			Themes:     updatedThemes,
+		})
+	}
+
+	return themeUpdatedFilteredDocs
 }
