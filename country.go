@@ -96,10 +96,6 @@ func (p *UserSelections) SetRecommendations(songId string, songThemes ...string)
 		if err != nil {
 			panic(err)
 		}
-		if err != nil {
-			panic(err)
-		}
-
 		if boolValue {
 			matchCount += 1
 			fmt.Println(theme+" --- Match found -", matchCount)
@@ -107,6 +103,11 @@ func (p *UserSelections) SetRecommendations(songId string, songThemes ...string)
 			fmt.Println(theme)
 		}
 	}
+
+	matchCount = matchCount * 10
+
+	//Slightly penalize themes unselected
+	matchCount = matchCount - (len(songThemes) - matchCount)
 
 	fmt.Println("\nMatches for song '"+songId+"':", matchCount)
 
